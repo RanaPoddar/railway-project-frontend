@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import EmptyState from '../../components/EmptyState';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import { FaTrain, FaClock, FaUser, FaExclamationTriangle, FaCheckCircle, FaPhone, FaHistory } from 'react-icons/fa';
+import { FaTrain, FaClock, FaUser, FaExclamationTriangle, FaPhone } from 'react-icons/fa';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -17,14 +17,12 @@ dayjs.extend(relativeTime);
 const ActiveShiftsPage = () => {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(dayjs());
-  const [showReliefModal, setShowReliefModal] = useState(false);
-  const [selectedShift, setSelectedShift] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [shifts, setShifts] = useState([]);
   const [activeShifts, setActiveShifts] = useState([]);
   
   const canEdit = useAuthStore((state) => state.canEdit);
-  const { success, warning, info } = useToastStore();
+  const { warning } = useToastStore();
 
   // Utility function to calculate duty hours
   const calculateDutyHours = (signOnTime) => {
@@ -121,67 +119,7 @@ const ActiveShiftsPage = () => {
     return { level: 'normal', color: 'green', text: 'Normal' };
   };
 
-  const handleReliefAction = (shift, action) => {
-    setSelectedShift(shift);
-    setShowReliefModal(true);
-  };
 
-  const handleReliefConfirm = async (shouldPlanRelief) => {
-    if (shouldPlanRelief) {
-      try {
-        // Plan relief via API
-        const dutyHours = calculateDutyHours(selectedShift.signOnTime);
-        await shiftService.updateShift(selectedShift.id, {
-          reliefPlanned: true,
-          reliefTime: dayjs().toISOString()
-        });
-        
-        // Update local state
-        setActiveShifts(prevShifts =>
-          prevShifts.map(s =>
-            s.id === selectedShift.id
-              ? { ...s, reliefPlanned: true, reliefTime: dayjs().toISOString() }
-              : s
-          )
-        );
-        
-        warning(`Relief planned for Train ${selectedShift.trainNumber} (${dutyHours.hours}h ${dutyHours.minutes}m)`);
-      } catch (error) {
-        console.error('Error planning relief:', error);
-        warning('Failed to plan relief');
-      }
-    } else {
-      // Continue tracking
-      info(`Tracking continues for Train ${selectedShift.trainNumber}`);
-    }
-    setShowReliefModal(false);
-    setSelectedShift(null);
-  };
-
-  const handleReleaseShift = async (shiftId) => {
-    const shift = activeShifts.find(s => s.id === shiftId);
-    if (!shift) return;
-    
-    const dutyHours = calculateDutyHours(shift.signOnTime);
-    
-    if (window.confirm(`Release shift for Train ${shift.trainNumber}?\n\nLoco Pilot: ${shift.locoPilot.name}\nDuty Hours: ${dutyHours.hours}h ${dutyHours.minutes}m`)) {
-      try {
-        // Release shift via API - mark as completed
-        await shiftService.updateShift(shiftId, {
-          status: 'COMPLETED',
-          completedAt: dayjs().toISOString()
-        });
-        
-        // Remove from active shifts
-        setActiveShifts(prevShifts => prevShifts.filter(s => s.id !== shiftId));
-        
-        success(`Shift released! Final Hours: ${dutyHours.hours}h ${dutyHours.minutes}m`);
-      } catch (error) {
-        console.error('Error releasing shift:', error);
-        warning('Failed to release shift');
-      }
-    }
-  };
 
   return (
     <Layout>
@@ -345,38 +283,12 @@ const ActiveShiftsPage = () => {
                       </div>
                     </div>
 
-                    {/* Actions */}
+                    {/* Shift Timing Info */}
                     <div className="lg:col-span-3 flex flex-col gap-2 justify-center">
                       <div className="text-xs text-gray-600 mb-1">
                         <p>Sign On: {dayjs(shift.signOnTime).format('HH:mm')}</p>
                         <p>Departure: {dayjs(shift.departureTime).format('HH:mm')}</p>
                       </div>
-                      
-                      {shift.reliefPlanned ? (
-                        <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-center gap-2">
-                          <FaCheckCircle className="text-blue-600" />
-                          <span className="text-sm font-medium text-blue-700">Relief Planned</span>
-                        </div>
-                      ) : (
-                        <>
-                          {dutyHours.totalHours >= 9 && canEdit() && (
-                            <button
-                              onClick={() => handleReliefAction(shift, 'plan')}
-                              className="px-4 py-2 bg-[#d32f2f] text-white rounded-md hover:bg-[#b71c1c] transition-colors text-sm font-medium"
-                            >
-                              Plan Relief
-                            </button>
-                          )}
-                          {canEdit() && (
-                            <button
-                              onClick={() => handleReleaseShift(shift.id)}
-                              className="px-4 py-2 bg-[#003d82] text-white rounded-md hover:bg-[#002b5c] transition-colors text-sm font-medium"
-                            >
-                              Release Shift
-                            </button>
-                          )}
-                        </>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -387,51 +299,6 @@ const ActiveShiftsPage = () => {
         </div>
       </ErrorBoundary>
 
-      {/* Relief Planning Modal */}
-      {showReliefModal && selectedShift && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <FaExclamationTriangle className="text-3xl text-orange-500" />
-              <h3 className="text-xl font-bold text-[#003d82]">Relief Decision Required</h3>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-gray-700 mb-2">
-                Train <strong>#{selectedShift.trainNumber}</strong> has exceeded duty hour threshold.
-              </p>
-              <p className="text-gray-700 mb-4">
-                Loco Pilot: <strong>{selectedShift.locoPilot.name}</strong>
-              </p>
-              <p className="text-sm text-gray-600">
-                Please decide whether to plan relief for this crew or continue tracking.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleReliefConfirm(true)}
-                className="flex-1 px-4 py-3 bg-[#d32f2f] text-white rounded-md hover:bg-[#b71c1c] transition-colors font-medium"
-              >
-                Plan Relief (Stop Tracking)
-              </button>
-              <button
-                onClick={() => handleReliefConfirm(false)}
-                className="flex-1 px-4 py-3 bg-[#003d82] text-white rounded-md hover:bg-[#002b5c] transition-colors font-medium"
-              >
-                Continue Tracking
-              </button>
-            </div>
-            
-            <button
-              onClick={() => setShowReliefModal(false)}
-              className="w-full mt-3 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </Layout>
   );
 };

@@ -2,8 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with default config
 const api = axios.create({
- baseURL: 'http://localhost:8000/api/v1',
-  // baseURL: 'https://railwayproject-node-backend.onrender.com/api/v1',
+ baseURL: process.env.VITE_API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -36,7 +35,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
-          const response = await axios.post('https://railwayproject-node-backend.onrender.com/api/v1/auth/refresh', {
+          const response = await axios.post(`${process.env.VITE_API_URL}/auth/refresh`, {
             refreshToken,
           });
 

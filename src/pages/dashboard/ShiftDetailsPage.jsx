@@ -35,8 +35,9 @@ const ShiftDetailsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(dayjs());
   const [activeTab, setActiveTab] = useState('timeline'); // timeline, alerts, logs
-  const [logFilter, setLogFilter] = useState('ALL'); // ALL, SIGN_ON, TAKE_OVER, etc.
+  const [logFilter, setLogFilter] = useState('ALL'); 
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [completeFormData, setCompleteFormData] = useState({
     signOffDateTime: '',
     signOffStation: '',
@@ -45,7 +46,7 @@ const ShiftDetailsPage = () => {
   const canEdit = useAuthStore((state) => state.canEdit);
   const { success, error: showError } = useToastStore();
 
-  // Utility function to calculate duty hours
+// utility 
   const calculateDutyHours = (signOnTime) => {
     const signOn = dayjs(signOnTime);
     const now = currentTime;
@@ -69,7 +70,7 @@ const ShiftDetailsPage = () => {
         const response = await shiftService.getShiftById(id);
         
         if (response.success && response.data) {
-          // Map backend DateTime fields to frontend field names
+          // Map 
           const shiftData = {
             ...response.data,
             signOnTime: response.data.signOnDateTime,
@@ -152,6 +153,7 @@ const ShiftDetailsPage = () => {
     e.preventDefault();
     
     try {
+      setIsSubmitting(true);
       // Convert to ISO format - backend expects signOffDateTime (combined)
       const signOffData = {
         signOffDateTime: dayjs(completeFormData.signOffDateTime).toISOString(),
@@ -171,6 +173,8 @@ const ShiftDetailsPage = () => {
     } catch (err) {
       console.error('❌ Failed to complete shift:', err);
       showError(err.response?.data?.message || 'Failed to complete shift');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -185,6 +189,9 @@ const ShiftDetailsPage = () => {
   const filteredLogs = shift?.logs?.filter(log => 
     logFilter === 'ALL' || log.logType === logFilter
   ) || [];
+
+  const displayAlerts = shift?.alerts || [];
+  const displayLogs = shift?.logs || [];
 
   if (isLoading) {
     return (
@@ -483,40 +490,48 @@ const ShiftDetailsPage = () => {
             {/* Alert History Tab */}
             {activeTab === 'alerts' && (
               <div className="p-6">
-                {(!shift.alerts || shift.alerts.length === 0) ? (
-                  <div className="text-center py-12">
-                    <FaCheckCircle className="text-6xl text-green-300 mx-auto mb-4" />
-                    <p className="text-gray-500">No alerts triggered for this shift</p>
+                {/* Alert Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-xs text-blue-600 font-semibold mb-1">Total Alerts</p>
+                    <p className="text-3xl font-bold text-blue-700">{displayAlerts?.length || 0}</p>
+                  </div>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-xs text-yellow-600 font-semibold mb-1">Caution (8-9hrs)</p>
+                    <p className="text-3xl font-bold text-yellow-700">{displayAlerts?.filter(a => a.threshold === 8).length || 0}</p>
+                  </div>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <p className="text-xs text-orange-600 font-semibold mb-1">Warning (11-12hrs)</p>
+                    <p className="text-3xl font-bold text-orange-700">{displayAlerts?.filter(a => a.threshold === 11 || a.threshold === 12).length || 0}</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-xs text-red-600 font-semibold mb-1">Critical (14hrs+)</p>
+                    <p className="text-3xl font-bold text-red-700">{displayAlerts?.filter(a => a.threshold >= 14).length || 0}</p>
+                  </div>
+                </div>
+
+                {(!displayAlerts || displayAlerts.length === 0) ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
+                    <FaCheckCircle className="text-4xl text-green-400 mx-auto mb-2" />
+                    <p className="text-gray-600 text-sm">No alerts triggered for this shift</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {shift.alerts.map((alert, index) => (
+                  <div className="space-y-2">
+                    {displayAlerts.map((alert, index) => (
                       <div
                         key={index}
-                        className={`border-l-4 p-4 rounded ${getAlertSeverityColor(alert.severity)}`}
+                        className={`border-l-4 p-3 rounded flex items-center justify-between ${getAlertSeverityColor(alert.severity)}`}
                       >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <FaExclamationTriangle className="text-orange-600" />
-                            <span className="font-semibold text-gray-800">{alert.threshold}HR Alert</span>
+                        <div className="flex items-center gap-3 flex-1">
+                          <FaExclamationTriangle className="text-orange-600 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-800 text-sm">{alert.threshold}HR Alert</p>
+                            <p className="text-xs text-gray-600">{alert.dutyHoursAtAlert}h duty hours</p>
                           </div>
-                          <span className="text-xs text-gray-500">
-                            {dayjs(alert.timestamp).format('DD MMM YYYY, HH:mm:ss')}
-                          </span>
                         </div>
-                        <p className="text-sm text-gray-700 mb-2">{alert.message}</p>
-                        {alert.response && (
-                          <div className="bg-white border border-gray-200 rounded p-3 mt-2">
-                            <p className="text-xs text-gray-600 mb-1">Response:</p>
-                            <p className="text-sm font-semibold text-[#003d82]">{alert.response.action}</p>
-                            {alert.response.remarks && (
-                              <p className="text-xs text-gray-500 mt-1">{alert.response.remarks}</p>
-                            )}
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-600 mt-2">
-                          Duty Hours at Alert: {alert.dutyHoursAtAlert}h
-                        </p>
+                        <span className="text-xs text-gray-500 shrink-0 ml-2">
+                          {dayjs(alert.timestamp).format('HH:mm')}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -526,13 +541,26 @@ const ShiftDetailsPage = () => {
 
             {/* Duty Logs Tab */}
             {activeTab === 'logs' && (
-              <div>
+              <div className="p-6">
+                {/* Log Type Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                  {['SIGN_ON', 'DEPARTURE', 'ARRIVAL', 'SIGN_OFF'].map((type) => {
+                    const count = displayLogs?.filter(log => log.logType === type).length || 0;
+                    return (
+                      <div key={type} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <p className="text-xs text-gray-600 font-semibold mb-1">{type.replace('_', ' ')}</p>
+                        <p className="text-2xl font-bold text-[#003d82]">{count}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 {/* Log Filter */}
-                <div className="p-4 bg-gray-50 border-b border-gray-200">
+                <div className="mb-4">
                   <select
                     value={logFilter}
                     onChange={(e) => setLogFilter(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#003d82]"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#003d82]"
                   >
                     <option value="ALL">All Logs</option>
                     <option value="SIGN_ON">Sign On</option>
@@ -546,56 +574,36 @@ const ShiftDetailsPage = () => {
                   </select>
                 </div>
 
-                <div className="p-6">
-                  {(!shift.logs || filteredLogs.length === 0) ? (
-                    <div className="text-center py-12">
-                      <FaFileAlt className="text-6xl text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-500">No logs available</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {filteredLogs.map((log, index) => {
+                {(!displayLogs || displayLogs.length === 0) ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
+                    <FaFileAlt className="text-4xl text-gray-300 mx-auto mb-2" />
+                    <p className="text-gray-600 text-sm">No logs available</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {displayLogs
+                      .filter(log => logFilter === 'ALL' || log.logType === logFilter)
+                      .map((log, index) => {
                         const LogIcon = getLogTypeIcon(log.logType);
                         return (
-                          <div key={index} className="border-l-4 border-blue-500 bg-gray-50 p-4 rounded">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <LogIcon className="text-[#003d82]" />
-                                <span className="font-semibold text-gray-800">{log.logType.replace('_', ' ')}</span>
+                          <div key={index} className="border-l-4 border-blue-500 bg-gray-50 p-3 rounded flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <LogIcon className="text-[#003d82] shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-800 text-sm">{log.logType.replace('_', ' ')}</p>
+                                {log.dutyHoursAtLog !== undefined && (
+                                  <p className="text-xs text-gray-600">{log.dutyHoursAtLog}h duty hours</p>
+                                )}
                               </div>
-                              <span className="text-xs text-gray-500">
-                                {dayjs(log.timestamp).format('DD MMM YYYY, HH:mm:ss')}
-                              </span>
                             </div>
-                            {log.description && (
-                              <p className="text-sm text-gray-700 mb-2">{log.description}</p>
-                            )}
-                            {log.dutyHoursAtLog !== undefined && (
-                              <p className="text-xs text-gray-600">
-                                Duty Hours: {log.dutyHoursAtLog}h
-                              </p>
-                            )}
-                            {log.remarks && (
-                              <div className="bg-white border border-gray-200 rounded p-2 mt-2">
-                                <p className="text-xs text-gray-600">Remarks:</p>
-                                <p className="text-sm text-gray-800">{log.remarks}</p>
-                              </div>
-                            )}
-                            {log.metadata && Object.keys(log.metadata).length > 0 && (
-                              <div className="mt-2 text-xs text-gray-500">
-                                {Object.entries(log.metadata).map(([key, value]) => (
-                                  <p key={key}>
-                                    <span className="font-semibold">{key}:</span> {value}
-                                  </p>
-                                ))}
-                              </div>
-                            )}
+                            <span className="text-xs text-gray-500 shrink-0 ml-2">
+                              {dayjs(log.timestamp).format('HH:mm')}
+                            </span>
                           </div>
                         );
                       })}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -685,15 +693,26 @@ const ShiftDetailsPage = () => {
                   <button
                     type="button"
                     onClick={handleCompleteModalClose}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors font-medium"
+                    disabled={isSubmitting}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
+                    disabled={isSubmitting}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <FaCheckCircle /> Complete Shift
+                    {isSubmitting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        <span>Completing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FaCheckCircle /> Complete Shift
+                      </>
+                    )}
                   </button>
                 </div>
 
